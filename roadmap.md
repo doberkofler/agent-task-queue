@@ -16,5 +16,5 @@
 
 ## Console output
 
-- [ ] Redesign progress output to be more visually appealing, similar to Vitest.
+- [x] Redesign progress output to be more visually appealing, similar to Vitest.
 - [ ] Retrieve additional harness information so the output can show when each task starts and when it finishes.

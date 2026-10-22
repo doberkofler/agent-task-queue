@@ -1,4 +1,5 @@
 import {LiveDisplay} from './liveDisplay.ts';
+import {paintEvent, type Palette} from './style.ts';
 import {summarizeTool} from './toolSummary.ts';
 import {readField, readNumber, readString} from '../jsonValue.ts';
 import {clip, formatDuration, sanitize, shorten} from '../sanitize.ts';
@@ -6,6 +7,7 @@ import {type QueueItem, type RunLogs, type TextWriter} from '../types.ts';
 
 const MAX_PREVIEW_LINES = 20;
 const MAX_PREVIEW_LINE_LENGTH = 400;
+const INDENT = '  ';
 
 const symbolFor = (status: string): string => (status === 'completed' ? '✓' : status === 'error' ? '✗' : status === 'running' ? '…' : '•');
 const isFinished = (status: string): boolean => status === 'completed' || status === 'error';
@@ -26,6 +28,7 @@ export class RunReporter {
 	public readonly verbose: boolean;
 	public readonly stream: TextWriter;
 	public readonly live: LiveDisplay;
+	public readonly palette: Palette;
 	public readonly started = Date.now();
 	public toolCalls = 0;
 	public tokens = 0;
@@ -40,6 +43,7 @@ export class RunReporter {
 		this.verbose = options.verbose;
 		this.stream = options.stream;
 		this.live = options.live ?? new LiveDisplay(options.stream);
+		this.palette = this.live.palette;
 	}
 
 	private timestamp(): string {
@@ -55,16 +59,17 @@ export class RunReporter {
 		if (this.live.enabled) {
 			this.live.add(message);
 		} else {
-			this.write(`${this.timestamp()} ${message}`);
+			this.write(`${INDENT}${this.palette.dim(this.timestamp())} ${paintEvent(this.palette, message)}`);
 		}
 	}
 
 	/** Writes the run header and the log locations. */
 	public start(item: QueueItem, logs: RunLogs): void {
-		this.write(`[queue] ${item.description}`);
-		this.write(`[agent] ${this.agentName} · ${this.model ?? 'default model'}`);
-		this.write(`[log] ${logs.history}`);
-		this.write(`[agent-log] ${logs.agent}`);
+		const {palette} = this;
+		this.write(`${INDENT}${palette.cyan('●')} ${palette.bold(`#${String(item.issue)}`)} ${item.description}`);
+		this.write(`    ${palette.dim('agent')}  ${this.agentName} ${palette.dim('·')} ${this.model ?? 'default model'}`);
+		this.write(`    ${palette.dim('log')}    ${logs.history}`);
+		this.write(`    ${palette.dim('raw')}    ${logs.agent}`);
 		this.live.setPhase('agent');
 	}
 
@@ -80,14 +85,17 @@ export class RunReporter {
 			this.live.add(`${label} › ${lines.at(-1) ?? ''}`);
 			return;
 		}
-		const prefix = `${this.timestamp()} ${label} › `;
+		const timestamp = this.timestamp();
+		const labelText = `${label} › `;
+		const prefix = `${INDENT}${this.palette.dim(timestamp)} ${paintEvent(this.palette, labelText)}`;
+		const continuation = ' '.repeat(INDENT.length + timestamp.length + 1 + labelText.length);
 		const visible = lines.slice(0, MAX_PREVIEW_LINES);
 		for (const [index, line] of visible.entries()) {
 			const preview = clip(line, MAX_PREVIEW_LINE_LENGTH);
-			this.write(index === 0 ? prefix + preview : ' '.repeat(prefix.length) + preview);
+			this.write(index === 0 ? prefix + preview : continuation + preview);
 		}
 		if (lines.length > visible.length) {
-			this.write(`${' '.repeat(prefix.length)}… ${String(lines.length - visible.length)} more lines (see log)`);
+			this.write(`${continuation}… ${String(lines.length - visible.length)} more lines (see log)`);
 		}
 	}
 
@@ -186,24 +194,29 @@ export class RunReporter {
 	/** Reports that the run was interrupted by a signal. */
 	public interrupted(): void {
 		this.live.clear();
-		this.write('[queue] interrupted; terminating OpenCode');
+		this.write(`${INDENT}${this.palette.yellow('!')} interrupted; terminating OpenCode`);
 	}
 
 	/** Writes the final status line and a bounded agent summary. */
 	public finish(returnCode: number): void {
 		this.live.clear();
+		const {palette} = this;
 		const elapsed = (Date.now() - this.started) / 1000;
-		const details = [formatDuration(elapsed)];
+		const details = [palette.dim(formatDuration(elapsed))];
 		if (this.toolCalls) {
-			details.push(`${String(this.toolCalls)} tool${this.toolCalls === 1 ? '' : 's'}`);
+			details.push(palette.dim(`${String(this.toolCalls)} tool${this.toolCalls === 1 ? '' : 's'}`));
 		}
 		if (this.tokens) {
-			details.push(`${this.tokens.toLocaleString('en-US')} tokens`);
+			details.push(palette.dim(`${this.tokens.toLocaleString('en-US')} tokens`));
 		}
 		if (this.cost) {
-			details.push(`$${this.cost.toFixed(4)}`);
+			details.push(palette.dim(`$${this.cost.toFixed(4)}`));
 		}
-		this.write(`[agent] ${returnCode === 0 ? 'finished' : `failed (exit ${String(returnCode)})`} in ${details.join(' · ')}`);
+		const status =
+			returnCode === 0
+				? `${palette.green('✓')} ${palette.bold('agent')} finished`
+				: `${palette.red('✗')} ${palette.bold('agent')} failed ${palette.dim(`(exit ${String(returnCode)})`)}`;
+		this.write(`${INDENT}${status} ${palette.dim('in')} ${details.join(palette.dim(' · '))}`);
 		this.writeSummary();
 	}
 
@@ -211,12 +224,15 @@ export class RunReporter {
 		if (this.finalText.length === 0) {
 			return;
 		}
+		const {palette} = this;
 		const lines = this.finalText.split('\n');
-		for (const [index, line] of lines.slice(0, MAX_PREVIEW_LINES).entries()) {
-			this.write(`${index === 0 ? '[summary] ' : '          '}${clip(line, MAX_PREVIEW_LINE_LENGTH)}`);
+		this.write('');
+		this.write(`${INDENT}${palette.dim('Summary')}`);
+		for (const line of lines.slice(0, MAX_PREVIEW_LINES)) {
+			this.write(`    ${clip(line, MAX_PREVIEW_LINE_LENGTH)}`);
 		}
 		if (lines.length > MAX_PREVIEW_LINES) {
-			this.write(`          … ${String(lines.length - MAX_PREVIEW_LINES)} more lines (see log)`);
+			this.write(`    ${palette.dim(`… ${String(lines.length - MAX_PREVIEW_LINES)} more lines (see log)`)}`);
 		}
 	}
 }

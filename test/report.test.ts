@@ -3,6 +3,7 @@ import {describe, expect, it} from 'vitest';
 
 import {sleepInhibitorCommand, stopSleepInhibitor} from '../src/platform/sleepInhibitor.ts';
 import {RunReporter} from '../src/report/reporter.ts';
+import {createPalette, paintEvent} from '../src/report/style.ts';
 import {sanitize, shorten} from '../src/sanitize.ts';
 import {type TextWriter} from '../src/types.ts';
 
@@ -67,7 +68,8 @@ describe('RunReporter', () => {
 		expect(text()).toContain('1 tool');
 		expect(text()).toContain('120 tokens');
 		expect(text()).toContain('$0.0012');
-		expect(text()).toContain('[summary] Implemented');
+		expect(text()).toContain('Summary');
+		expect(text()).toContain('Implemented');
 	});
 
 	it('reports failures and background jobs', () => {
@@ -76,7 +78,7 @@ describe('RunReporter', () => {
 		reporter.consume(JSON.stringify({type: 'error', error: {data: {message: 'boom'}}}));
 		reporter.finish(7);
 		expect(reporter.backgroundJobStarted).toBe(true);
-		expect(text()).toContain('[agent] failed (exit 7)');
+		expect(text()).toContain('agent failed (exit 7)');
 		expect(text()).toContain('error › boom');
 	});
 
@@ -86,9 +88,31 @@ describe('RunReporter', () => {
 		const reporter = new RunReporter({model: null, agentName: 'build', verbose: false, stream});
 		reporter.consume(JSON.stringify({type: 'tool_use', part: {id: 'c', tool: 'read', state: {status: 'completed', input: {path: 'README.md'}}}}));
 		reporter.interrupted();
-		expect(output).toContain('✓ read README.md');
+		expect(output).toContain('read README.md');
 		expect(output).toContain('interrupted; terminating OpenCode');
 		expect(output).toContain('\u001b[');
+	});
+});
+
+describe('style', () => {
+	const tty: TextWriter = {isTTY: true, write: () => undefined};
+	const plain: TextWriter = {write: () => undefined};
+
+	it('uses ANSI styles when enabled', () => {
+		expect(createPalette(tty, {forceColor: true}).enabled).toBe(true);
+		expect(createPalette(plain, {forceColor: true}).enabled).toBe(true);
+	});
+
+	it('disables ANSI styles for plain streams and NO_COLOR', () => {
+		expect(createPalette(plain, {forceColor: false}).enabled).toBe(false);
+		expect(createPalette(tty, {noColor: true}).enabled).toBe(false);
+	});
+
+	it('paints status symbols and labels', () => {
+		const palette = createPalette(tty, {forceColor: true});
+		expect(paintEvent(palette, '✓ read README.md')).toBe(`${palette.green('✓')} read README.md`);
+		expect(paintEvent(palette, '✗ failed')).toBe(palette.red('✗ failed'));
+		expect(paintEvent(palette, 'agent › working')).toBe(`${palette.dim('agent')}${palette.dim(' › ')}working`);
 	});
 });
 

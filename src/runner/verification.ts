@@ -6,6 +6,7 @@ import {allocateLogPaths, closeQuietly, displayPath, openAppend, openPrivate, wr
 import {logDirectory} from '../logDirectory.ts';
 import {runStreamProcess} from '../platform/process.ts';
 import {LiveDisplay} from '../report/liveDisplay.ts';
+import {createPalette} from '../report/style.ts';
 import {formatDuration, sanitize} from '../sanitize.ts';
 import {type RunLogs} from '../types.ts';
 import {printFailureTail} from './diagnostics.ts';
@@ -30,10 +31,12 @@ export const runVerification = async (options: VerificationOptions): Promise<voi
 	if (!existsSync(options.logs.history)) {
 		closeQuietly(openPrivate(options.logs.history));
 	}
-	process.stdout.write(`[verify] ${options.phase} · ${describeCommand(options.command)}\n`);
-	process.stdout.write(`[log] ${displayPath(options.logs.history)}\n`);
+	const palette = createPalette(process.stdout);
+	process.stdout.write(`  ${palette.cyan('●')} verify ${palette.bold(options.phase)}\n`);
+	process.stdout.write(`    ${palette.dim('command')}  ${describeCommand(options.command)}\n`);
+	process.stdout.write(`    ${palette.dim('log')}      ${displayPath(options.logs.history)}\n`);
 	const live = new LiveDisplay(process.stdout);
-	live.setPhase(options.phase);
+	live.setPhase(`verify ${options.phase}`);
 	const tail = new LineTail(FAILURE_TAIL_LINES);
 	const started = Date.now();
 	const descriptor = openAppend(options.logs.history);
@@ -61,16 +64,18 @@ export const runVerification = async (options: VerificationOptions): Promise<voi
 		}
 		const elapsed = formatDuration((Date.now() - started) / 1000);
 		if (result.timedOut) {
-			process.stdout.write(`[verify] ${options.phase} timed out after ${formatDuration(options.timeoutSeconds)}\n`);
+			process.stdout.write(`  ${palette.red('✗')} verify ${options.phase} timed out ${palette.dim(`after ${formatDuration(options.timeoutSeconds)}`)}\n`);
 			printFailureTail(tail);
 			throw new QueueError(`Verification timed out; log: ${displayPath(options.logs.history)}`);
 		}
 		if (result.exitCode !== 0) {
-			process.stdout.write(`[verify] ${options.phase} failed (exit ${String(result.exitCode)}) in ${elapsed}\n`);
+			process.stdout.write(
+				`  ${palette.red('✗')} verify ${options.phase} failed ${palette.dim(`(exit ${String(result.exitCode)})`)} ${palette.dim(`in ${elapsed}`)}\n`,
+			);
 			printFailureTail(tail);
 			throw new QueueError(`Verification exited with status ${String(result.exitCode)}; log: ${displayPath(options.logs.history)}`);
 		}
-		process.stdout.write(`[verify] ${options.phase} passed in ${elapsed}\n`);
+		process.stdout.write(`  ${palette.green('✓')} verify ${options.phase} passed ${palette.dim(`in ${elapsed}`)}\n`);
 	} finally {
 		live.clear();
 		closeQuietly(descriptor);

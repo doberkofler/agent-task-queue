@@ -71,12 +71,13 @@ describe('verification', () => {
 
 			expect(result.status).toBe(0);
 			expect(readFileSync(value.counterPath, 'utf8')).toBe('2');
-			expect(result.stdout).toContain(`[run] queue · ${value.queuePath}`);
-			expect(result.stdout).toContain('[run] model · default');
-			expect(result.stdout).toContain(`[run] verify · ${process.execPath} ${value.scriptPath} ${value.counterPath}`);
-			expect(result.stdout).toMatch(/\[log\] .*?-preflight\.log/u);
-			expect(result.stdout.indexOf('[verify] preflight passed')).toBeLessThan(result.stdout.indexOf('[queue] #14'));
-			expect(result.stdout).toContain('[verify] post-commit passed');
+			expect(result.stdout).toContain('RUN');
+			expect(result.stdout).toContain(value.queuePath);
+			expect(result.stdout).toMatch(/model\s+default/u);
+			expect(result.stdout).toContain(`${process.execPath} ${value.scriptPath} ${value.counterPath}`);
+			expect(result.stdout).toMatch(/-preflight\.log/u);
+			expect(result.stdout.indexOf('verify preflight passed')).toBeLessThan(result.stdout.indexOf('#14'));
+			expect(result.stdout).toContain('verify post-commit passed');
 		});
 
 		it('does not start the agent when preflight fails', () => {
@@ -87,7 +88,7 @@ describe('verification', () => {
 			const result = runVerified(value, agent);
 
 			expect(result.status).toBe(1);
-			expect(result.stdout).toContain('[verify] preflight failed (exit 9)');
+			expect(result.stdout).toContain('verify preflight failed (exit 9)');
 			expect(() => readFileSync(path.join(value.directory, 'argv.json'), 'utf8')).toThrow('ENOENT');
 		});
 
@@ -111,7 +112,7 @@ describe('verification', () => {
 			const result = runVerified(value, agent);
 
 			expect(result.status).toBe(1);
-			expect(result.stdout).toContain('[verify] post-commit failed (exit 9)');
+			expect(result.stdout).toContain('verify post-commit failed (exit 9)');
 			const queue = JSON.parse(readFileSync(value.queuePath, 'utf8')) as {items: {done: boolean}[]};
 			expect(queue.items[0]?.done).toBe(false);
 		});

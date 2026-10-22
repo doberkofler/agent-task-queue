@@ -38,6 +38,10 @@ echo '{"version":1,"kind":"github-issues","items":[{"url":"https://github.com/OW
 
 Every invocation needs an explicit verification policy: `--verify <command>`, `--no-verify`, or a `verification.command` in the configuration file.
 
+## Output
+
+Progress follows a Vitest-style layout: a `RUN` header, one line per queue item, a live spinner with recent events, and a final summary. Color is enabled only on a terminal and can be controlled with `NO_COLOR` and `FORCE_COLOR`.
+
 ## Queue formats
 
 ### Markdown
@@ -162,6 +166,8 @@ Every agent and verification run writes two private files under `$QUEUE_LOG_DIR`
 | `QUEUE_MODEL` | Model fallback when neither `--model` nor `agent.model` is set. |
 | `QUEUE_LOG_DIR` | Log directory fallback. |
 | `XDG_STATE_HOME` | Base directory for the default log location. |
+| `NO_COLOR` | Disable ANSI colors when set to a non-empty value. |
+| `FORCE_COLOR` | Force ANSI colors unless set to `0`. |
 
 ## Behavior and guarantees
 
