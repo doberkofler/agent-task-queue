@@ -162,33 +162,30 @@ describe('runner', () => {
 		expect(result.stdout).toContain(value.queuePath);
 		expect(result.stdout).toMatch(/model\s+default/u);
 		expect(result.stdout).toMatch(/verify\s+disabled/u);
-		expect(result.stdout).toMatch(/timeouts\s+agent/u);
-		expect(result.stdout).toContain('build · default model');
-		expect(result.stdout).toContain('✓ shell pnpm test');
-		expect(result.stdout).toContain('✓ read README.md');
-		expect(result.stdout).toContain('agent › Implemented');
-		expect(result.stdout).toContain('the runner.');
+		expect(result.stdout).toContain('✓ #14 [EVAL-006] Runner');
 		expect(result.stdout).toContain('2 tools');
 		expect(result.stdout).toContain('120 tokens');
 		expect(result.stdout).toContain('$0.0012');
-		expect(result.stdout).toContain('agent finished');
-		expect(result.stdout).toContain('#14 done');
+		expect(result.stdout).toContain('1 task completed');
+		expect(result.stdout).toContain('Implemented');
+		expect(result.stdout).toContain('the runner.');
+		expect(result.stdout).not.toContain('✓ shell pnpm test');
+		expect(result.stdout).not.toContain('Running command');
 		expect(result.stdout).not.toContain('"type"');
 		expect(result.stderr).not.toContain('"type"');
 
 		const agentLogs = readdirSync(value.logDirectory).filter((name) => name.endsWith('.jsonl'));
 		expect(agentLogs).toHaveLength(1);
 		const agentLog = readFileSync(path.join(value.logDirectory, agentLogs[0] ?? ''), 'utf8');
-		expect(result.stdout).toContain(path.join(value.logDirectory, agentLogs[0] ?? ''));
 		expect(agentLog).toContain('"type":"tool_use"');
 		expect(agentLog).not.toContain('agent diagnostic');
 
 		const historyLogs = readdirSync(value.logDirectory).filter((name) => name.endsWith('.log'));
 		expect(historyLogs).toHaveLength(1);
 		const historyPath = path.join(value.logDirectory, historyLogs[0] ?? '');
-		expect(result.stdout).toContain(historyPath);
-		expect(result.stdout.indexOf(historyPath)).toBeLessThan(result.stdout.indexOf('✓ shell pnpm test'));
 		expect(readFileSync(historyPath, 'utf8')).toContain('agent diagnostic');
+		expect(result.stdout).not.toContain(historyPath);
+		expect(result.stdout).not.toContain(path.join(value.logDirectory, agentLogs[0] ?? ''));
 	});
 
 	it('reports an agent failure with the log path', () => {
@@ -198,11 +195,12 @@ describe('runner', () => {
 		const result = runQueue(value, agent);
 
 		expect(result.status).toBe(1);
-		expect(result.stdout).toContain('agent failed (exit 7)');
+		expect(result.stdout).toContain('Agent failed (exit 7)');
 		expect(result.stderr).toContain('OpenCode exited with status 7');
-		const agentLogs = readdirSync(value.logDirectory).filter((name) => name.endsWith('.jsonl'));
-		expect(agentLogs).toHaveLength(1);
-		expect(result.stdout).toContain(agentLogs[0] ?? '');
+		const historyLogs = readdirSync(value.logDirectory).filter((name) => name.endsWith('.log'));
+		expect(historyLogs).toHaveLength(1);
+		expect(result.stdout).toContain(historyLogs[0] ?? '');
+		expect(result.stdout).not.toContain('✓ #14');
 	});
 
 	it('hides unstructured output by default and shows it in verbose mode', () => {
@@ -217,6 +215,7 @@ describe('runner', () => {
 		const verboseResult = runQueue(verbose, verboseAgent, {args: ['--verbose']});
 		expect(verboseResult.status).toBe(0);
 		expect(verboseResult.stdout).toContain('unstructured diagnostic');
+		expect(verboseResult.stdout).toContain(verbose.logDirectory);
 	});
 
 	it('times out and terminates the agent process group', () => {

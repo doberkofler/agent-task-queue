@@ -40,7 +40,31 @@ Every invocation needs an explicit verification policy: `--verify <command>`, `-
 
 ## Output
 
-Progress follows a Vitest-style layout: a `RUN` header, one line per queue item, a live spinner with recent events, and a final summary. Color is enabled only on a terminal and can be controlled with `NO_COLOR` and `FORCE_COLOR`.
+Progress uses a compact, Vitest-style layout:
+
+```text
+ RUN  milestone-2.json
+      model deepseek/deepseek-flash · verify pnpm run verify
+
+ ✓ Preflight · 29.8s
+
+ ✓ #39 [TEST-001] Inventory tests by class and establish ownership
+   2m08s · 12 tools · 24.1k tokens · $0.0842 · commit a1b2c3d
+
+   Implemented ownership tests.
+   Updated testing documentation.
+
+ ✓ 1 task completed · 2m38s
+```
+
+- One transient activity line is redrawn on a terminal; completed work stays in scrollback.
+- Tool arguments and shell commands become semantic activity such as `Reading src/config.ts` or `Running command`. Commands are not echoed.
+- Only two meaningful lines of the agent's final response are shown.
+- Failures print the retained output tail and the exact history log path.
+- Piped output contains phase milestones only, without animation or activity lines.
+- `--verbose` adds tool details, event diagnostics, and log paths to successful runs.
+
+Color is enabled only on a terminal and can be controlled with `NO_COLOR` and `FORCE_COLOR`.
 
 ## Queue formats
 

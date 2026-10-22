@@ -2,9 +2,8 @@ import {type Configuration} from '../config.ts';
 import {QueueError} from '../errors.ts';
 import {requireCleanTree, runGit} from '../git.ts';
 import {loadQueue, type LoadQueueOptions} from '../queue/loadQueue.ts';
-import {createPalette} from '../report/style.ts';
+import {TerminalProgress} from '../report/progress.ts';
 import {type QueueItem} from '../types.ts';
-import {formatDuration} from '../sanitize.ts';
 import {validateAgentCommit} from './commitValidation.ts';
 import {runAgent} from './runAgent.ts';
 import {describeCommand, runVerification, verificationLogs} from './verification.ts';
@@ -36,39 +35,7 @@ const cleanTree = (configuration: Configuration, context: string): void => {
 	}
 };
 
-const writeRunHeader = (configuration: Configuration, queueDisplay: string): void => {
-	const palette = createPalette(process.stdout);
-	const verification = configuration.verification.command === null ? 'disabled' : describeCommand(configuration.verification.command);
-	const info = (label: string, value: string): string => `    ${palette.dim(label.padEnd(9))}${value}\n`;
-	process.stdout.write(`\n  ${palette.cyan(palette.bold('RUN'))}  ${palette.bold('agent-task-queue')}\n\n`);
-	process.stdout.write(info('queue', queueDisplay));
-	process.stdout.write(info('model', configuration.agent.model ?? 'default'));
-	process.stdout.write(info('verify', verification));
-	process.stdout.write(
-		info('timeouts', `agent ${formatDuration(configuration.agent.timeoutSeconds)} · verify ${formatDuration(configuration.verification.timeoutSeconds)}`),
-	);
-	process.stdout.write('\n');
-};
-
-const writeItemResult = (item: QueueItem, commit: string, duration: number): void => {
-	const palette = createPalette(process.stdout);
-	const details = [`commit ${palette.cyan(commit)}`, palette.dim(formatDuration(duration))];
-	process.stdout.write(
-		`  ${palette.green('✓')} ${palette.bold(`#${String(item.issue)}`)} ${palette.green('done')} ${palette.dim('·')} ${details.join(palette.dim(' · '))}\n`,
-	);
-};
-
-const writeTotals = (totals: {completed: number; itemSeconds: number}, started: number): void => {
-	const palette = createPalette(process.stdout);
-	const count = `${String(totals.completed)} ${totals.completed === 1 ? 'task' : 'tasks'} completed`;
-	const details = [count, `${formatDuration((Date.now() - started) / 1000)} total`];
-	if (totals.completed > 0) {
-		details.push(`${formatDuration(totals.itemSeconds / totals.completed)} average`);
-	}
-	process.stdout.write(`  ${palette.green('✓')} ${details.join(palette.dim(' · '))}\n`);
-};
-
-const runPostCommitVerification = async (options: ProcessQueueOptions, item: QueueItem): Promise<void> => {
+const runPostCommitVerification = async (options: ProcessQueueOptions, progress: TerminalProgress): Promise<void> => {
 	const {command} = options.configuration.verification;
 	if (command === null || !options.configuration.verification.afterEachTask) {
 		return;
@@ -77,17 +44,16 @@ const runPostCommitVerification = async (options: ProcessQueueOptions, item: Que
 		command,
 		timeoutSeconds: options.configuration.verification.timeoutSeconds,
 		logs: verificationLogs('post-commit'),
-		phase: 'post-commit',
+		phase: 'Post-commit',
+		progress,
 		...(options.signal === undefined ? {} : {signal: options.signal}),
 	});
-	cleanTree(options.configuration, `after verification: ${item.description}`);
 };
 
-const preflight = async (options: ProcessQueueOptions): Promise<void> => {
+const preflight = async (options: ProcessQueueOptions, progress: TerminalProgress): Promise<void> => {
 	const {command} = options.configuration.verification;
 	if (command === null) {
-		const palette = createPalette(process.stdout);
-		process.stdout.write(`  ${palette.cyan('↓')} verify skipped ${palette.dim('(--no-verify)')}\n`);
+		progress.report({type: 'phase-skipped', label: 'Verify', reason: '--no-verify'});
 		return;
 	}
 	if (!options.configuration.verification.preflight) {
@@ -97,63 +63,94 @@ const preflight = async (options: ProcessQueueOptions): Promise<void> => {
 		command,
 		timeoutSeconds: options.configuration.verification.timeoutSeconds,
 		logs: verificationLogs('preflight'),
-		phase: 'preflight',
+		phase: 'Preflight',
+		progress,
 		...(options.signal === undefined ? {} : {signal: options.signal}),
 	});
-	cleanTree(options.configuration, 'after verification preflight');
 };
 
 const processItem = async (
 	options: ProcessQueueOptions,
+	state: {readonly progress: TerminalProgress; readonly totals: {completed: number; itemSeconds: number}},
 	queue: ReturnType<typeof loadQueue>,
 	item: QueueItem,
-	totals: {completed: number; itemSeconds: number},
 ): Promise<void> => {
 	const {configuration} = options;
+	const {progress, totals} = state;
 	const started = Date.now();
-	const cwd = process.cwd();
-	cleanTree(configuration, `before: ${item.description}`);
-	const previousHead = configuration.repository.commitPolicy === 'none' ? null : runGit(['rev-parse', 'HEAD'], cwd);
-	await runAgent({
-		item,
-		queuePath: options.queuePath,
-		configuration,
-		verbose: options.verbose,
-		...(options.signal === undefined ? {} : {signal: options.signal}),
-	});
-	cleanTree(configuration, `after: ${item.description}`);
-	if (previousHead !== null) {
-		validateAgentCommit({previousHead, queuePath: options.queuePath, configuration, cwd});
+	progress.report({type: 'task-started', item});
+	try {
+		const cwd = process.cwd();
+		cleanTree(configuration, `before: ${item.description}`);
+		const previousHead = configuration.repository.commitPolicy === 'none' ? null : runGit(['rev-parse', 'HEAD'], cwd);
+		const agent = await runAgent({
+			item,
+			queuePath: options.queuePath,
+			configuration,
+			verbose: options.verbose,
+			progress,
+			...(options.signal === undefined ? {} : {signal: options.signal}),
+		});
+		cleanTree(configuration, `after: ${item.description}`);
+		if (previousHead !== null) {
+			validateAgentCommit({previousHead, queuePath: options.queuePath, configuration, cwd});
+		}
+		const agentCommit = configuration.repository.commitPolicy === 'none' ? null : runGit(['rev-parse', '--short', 'HEAD'], cwd);
+		await runPostCommitVerification(options, progress);
+		cleanTree(configuration, `after verification: ${item.description}`);
+		await queue.commitDone(item);
+		const duration = (Date.now() - started) / 1000;
+		totals.completed += 1;
+		totals.itemSeconds += duration;
+		progress.report({
+			type: 'task-finished',
+			item,
+			stats: {
+				durationSeconds: duration,
+				tools: agent.tools,
+				tokens: agent.tokens,
+				cost: agent.cost,
+				commit: agentCommit,
+			},
+			summary: agent.finalText.split('\n'),
+		});
+	} catch (error) {
+		progress.report({type: 'task-aborted'});
+		throw error;
 	}
-	const agentCommit = runGit(['rev-parse', '--short', 'HEAD'], cwd);
-	await runPostCommitVerification(options, item);
-	await queue.commitDone(item);
-	const duration = (Date.now() - started) / 1000;
-	totals.completed += 1;
-	totals.itemSeconds += duration;
-	writeItemResult(item, agentCommit, duration);
 };
 
 /** Processes every pending queue item sequentially. */
 export const processQueue = async (options: ProcessQueueOptions): Promise<void> => {
 	const {configuration} = options;
 	const started = Date.now();
-	const queueDisplay = options.queuePath ?? 'stdin';
-	writeRunHeader(configuration, queueDisplay);
+	const progress = new TerminalProgress(process.stdout, {verbose: options.verbose});
+	const {command} = configuration.verification;
+	try {
+		progress.report({
+			type: 'run-started',
+			queue: options.queuePath ?? 'stdin',
+			model: configuration.agent.model,
+			verification: command === null ? null : describeCommand(command),
+		});
 
-	const initialQueue = loadQueue(options.queuePath, options.queueContent, queueLoader(options));
-	requireGithubCompletion(configuration, initialQueue.kind);
-	cleanTree(configuration, 'before verification preflight');
-	await preflight(options);
+		const initialQueue = loadQueue(options.queuePath, options.queueContent, queueLoader(options));
+		requireGithubCompletion(configuration, initialQueue.kind);
+		cleanTree(configuration, 'before verification preflight');
+		await preflight(options, progress);
 
-	const totals = {completed: 0, itemSeconds: 0};
-	for (;;) {
-		const queue = loadQueue(options.queuePath, options.queueContent, queueLoader(options));
-		const item = await queue.nextItem();
-		if (item === null) {
-			writeTotals(totals, started);
-			return;
+		const totals = {completed: 0, itemSeconds: 0};
+		const state = {progress, totals};
+		for (;;) {
+			const queue = loadQueue(options.queuePath, options.queueContent, queueLoader(options));
+			const item = await queue.nextItem();
+			if (item === null) {
+				progress.report({type: 'run-finished', completed: totals.completed, durationSeconds: (Date.now() - started) / 1000});
+				return;
+			}
+			await processItem(options, state, queue, item);
 		}
-		await processItem(options, queue, item, totals);
+	} finally {
+		progress.close();
 	}
 };

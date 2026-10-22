@@ -4,10 +4,10 @@ import {QueueError, TerminationRequestedError} from '../errors.ts';
 import {closeQuietly, allocateLogPaths, displayPath, openPrivate, writeTo} from '../logFiles.ts';
 import {logDirectory} from '../logDirectory.ts';
 import {runStreamProcess} from '../platform/process.ts';
-import {RunReporter} from '../report/reporter.ts';
+import {AgentReporter, type AgentStats} from '../report/agentReporter.ts';
+import {type TerminalProgress} from '../report/progress.ts';
 import {formatDuration, sanitize} from '../sanitize.ts';
-import {type QueueItem, type RunLogs} from '../types.ts';
-import {printFailureTail} from './diagnostics.ts';
+import {type QueueItem} from '../types.ts';
 import {LineTail} from './lineTail.ts';
 
 const FAILURE_TAIL_LINES = 20;
@@ -18,26 +18,26 @@ export type AgentRunOptions = {
 	readonly queuePath: string | null;
 	readonly configuration: Configuration;
 	readonly verbose: boolean;
+	readonly progress: TerminalProgress;
 	readonly signal?: AbortSignal;
 };
 
 /** Runs the configured agent, writes both logs, and enforces the runtime contract. */
-export const runAgent = async (options: AgentRunOptions): Promise<RunLogs> => {
+export const runAgent = async (options: AgentRunOptions): Promise<AgentStats> => {
 	const logs = allocateLogPaths(logDirectory(), options.item.issue);
-	const reporter = new RunReporter({
-		model: options.configuration.agent.model,
-		agentName: options.configuration.agent.name,
-		verbose: options.verbose,
-		stream: process.stdout,
-	});
+	const reporter = new AgentReporter({progress: options.progress, verbose: options.verbose});
 	const tail = new LineTail(FAILURE_TAIL_LINES);
 	const agentDescriptor = openPrivate(logs.agent);
+	const started = Date.now();
 	let historyDescriptor: number | undefined;
 
 	try {
 		const history = openPrivate(logs.history);
 		historyDescriptor = history;
-		reporter.start(options.item, logs);
+		reporter.start();
+		if (options.verbose) {
+			options.progress.report({type: 'verbose', text: `log ${displayPath(logs.history)}`});
+		}
 		const invocation = openCodeInvocation({
 			item: options.item,
 			queuePath: options.queuePath,
@@ -64,23 +64,36 @@ export const runAgent = async (options: AgentRunOptions): Promise<RunLogs> => {
 				tail.add(`stderr: ${sanitize(line)}`);
 			},
 		});
+		const durationSeconds = (Date.now() - started) / 1000;
+		const stats = reporter.finish();
 		if (result.aborted) {
-			reporter.interrupted();
+			options.progress.report({type: 'interrupted'});
 			throw new TerminationRequestedError();
 		}
-		reporter.finish(result.exitCode);
 		if (result.timedOut) {
-			printFailureTail(tail);
-			throw new QueueError(`OpenCode timed out after ${formatDuration(options.configuration.agent.timeoutSeconds)}; log: ${displayPath(logs.history)}`);
+			options.progress.report({
+				type: 'failure',
+				label: 'Agent',
+				outcome: {durationSeconds, timedOut: true},
+				logPath: displayPath(logs.history),
+				tail: [...tail.values()],
+			});
+			throw new QueueError(`OpenCode timed out after ${formatDuration(options.configuration.agent.timeoutSeconds)}`);
 		}
 		if (result.exitCode !== 0) {
-			printFailureTail(tail);
-			throw new QueueError(`OpenCode exited with status ${String(result.exitCode)}; log: ${displayPath(logs.history)}`);
+			options.progress.report({
+				type: 'failure',
+				label: 'Agent',
+				outcome: {durationSeconds, exitCode: result.exitCode},
+				logPath: displayPath(logs.history),
+				tail: [...tail.values()],
+			});
+			throw new QueueError(`OpenCode exited with status ${String(result.exitCode)}`);
 		}
 		if (reporter.backgroundJobStarted) {
-			throw new QueueError(`Agent started a background job; all work must finish before exit; log: ${displayPath(logs.history)}`);
+			throw new QueueError('Agent started a background job; all work must finish before exit');
 		}
-		return logs;
+		return stats;
 	} finally {
 		if (historyDescriptor !== undefined) {
 			closeQuietly(historyDescriptor);

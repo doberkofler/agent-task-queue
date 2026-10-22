@@ -51,35 +51,3 @@ export const createPalette = (stream: TextWriter, options: PaletteOptions = {}):
 		cyan: (text) => paint(enabled, 36, 39, text),
 	};
 };
-
-/** Applies Vitest-style colors to one plain progress line. */
-export const paintEvent = (palette: Palette, line: string): string => {
-	const symbol = line.slice(0, 1);
-	const rest = line.slice(1);
-	if (symbol === '✓') {
-		return `${palette.green(symbol)}${rest}`;
-	}
-	if (symbol === '✗') {
-		return palette.red(line);
-	}
-	if (symbol === '…') {
-		return `${palette.cyan(symbol)}${rest}`;
-	}
-	if (symbol === '↓') {
-		return `${palette.yellow(symbol)}${rest}`;
-	}
-	if (symbol === '●') {
-		return `${palette.cyan(symbol)}${rest}`;
-	}
-	if (line.startsWith('error › ')) {
-		return palette.red(line);
-	}
-	if (line.startsWith('log: ') || line.startsWith('event: ')) {
-		return palette.dim(line);
-	}
-	const separator = line.indexOf(' › ');
-	if (separator > 0) {
-		return `${palette.dim(line.slice(0, separator))}${palette.dim(' › ')}${line.slice(separator + 3)}`;
-	}
-	return line;
-};

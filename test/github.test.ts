@@ -55,7 +55,7 @@ describe('github', () => {
 			});
 
 			expect(result.status).toBe(0);
-			expect(result.stdout).toContain('0 tasks completed');
+			expect(result.stdout).toContain('no pending tasks');
 			expect(() => readFileSync(path.join(value.directory, 'argv.json'), 'utf8')).toThrow('ENOENT');
 		});
 
@@ -67,7 +67,7 @@ describe('github', () => {
 			const result = runQueue(value, agent, {env: {GH_BIN: '/nonexistent/gh'}});
 
 			expect(result.status).toBe(0);
-			expect(result.stdout).toContain('0 tasks completed');
+			expect(result.stdout).toContain('no pending tasks');
 			expect(() => readFileSync(path.join(value.directory, 'argv.json'), 'utf8')).toThrow('ENOENT');
 		});
 
