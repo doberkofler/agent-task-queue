@@ -1,4 +1,6 @@
 import {type ChildProcess} from 'node:child_process';
+import {homedir} from 'node:os';
+import path from 'node:path';
 import {describe, expect, it} from 'vitest';
 
 import {sleepInhibitorCommand, stopSleepInhibitor} from '../src/platform/sleepInhibitor.ts';
@@ -224,7 +226,8 @@ describe('activity', () => {
 	});
 
 	it('keeps home-relative paths readable', () => {
-		expect(workspacePath('/tmp/example/file.ts')).toBe('/tmp/example/file.ts');
+		const homeFile = path.join(homedir(), 'agent-task-queue-example', 'file.ts');
+		expect(workspacePath(homeFile)).toBe('~/agent-task-queue-example/file.ts');
 	});
 });
 

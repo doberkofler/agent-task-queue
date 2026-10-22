@@ -9,9 +9,15 @@ const MAX_DETAIL_LENGTH = 50;
 
 type Descriptor = (input: unknown, target: string) => string;
 
+// Display paths always use forward slashes so terminal output is stable across platforms.
+const displayPath = (value: string): string => value.split(path.sep).join('/');
+
 const homeRelative = (value: string): string => {
 	const home = homedir();
-	return value === home ? '~' : value.startsWith(`${home}${path.sep}`) ? `~/${value.slice(home.length + 1)}` : value;
+	if (value === home) {
+		return '~';
+	}
+	return value.startsWith(`${home}${path.sep}`) ? `~/${displayPath(value.slice(home.length + 1))}` : displayPath(value);
 };
 
 /** Shortens an absolute path to a workspace-relative or home-relative form. */
@@ -22,7 +28,7 @@ export const workspacePath = (value: string): string => {
 	const resolved = path.resolve(process.cwd(), value);
 	const relative = path.relative(process.cwd(), resolved);
 	const insideWorkspace = relative.length > 0 && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
-	return insideWorkspace ? relative : homeRelative(resolved);
+	return insideWorkspace ? displayPath(relative) : homeRelative(resolved);
 };
 
 const shortenPath = (value: string): string => (value.length <= MAX_PATH_LENGTH ? value : `…${value.slice(-(MAX_PATH_LENGTH - 1))}`);
