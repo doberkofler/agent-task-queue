@@ -1,9 +1,8 @@
-import {realpathSync} from 'node:fs';
 import path from 'node:path';
 
 import {type Configuration} from '../config.ts';
 import {QueueError} from '../errors.ts';
-import {repositoryRoot, runGit} from '../git.ts';
+import {runGit} from '../git.ts';
 
 const AGENT_COMMIT_ERROR = 'Agent must create exactly one non-merge commit';
 const AT_LEAST_ONE_COMMIT_ERROR = 'Agent must create at least one commit';
@@ -26,15 +25,21 @@ const changedPaths = (policy: 'exactly-one' | 'at-least-one', previousHead: stri
 		.split('\n')
 		.filter(Boolean);
 
-const queueIsUntouched = (paths: readonly string[], queuePath: string | null, cwd: string): void => {
+const queueIsUntouched = (paths: readonly string[], queuePath: string | null): void => {
 	if (queuePath === null) {
 		return;
 	}
-	const root = realpathSync(repositoryRoot(cwd));
-	const relativeQueue = path.relative(root, realpathSync(path.resolve(queuePath))).replaceAll('\\', '/');
-	if (relativeQueue === '..' || relativeQueue.startsWith('../') || path.isAbsolute(relativeQueue)) {
-		throw new QueueError('Queue must be inside the Git repository');
-	}
+	const absoluteQueue = path.resolve(queuePath);
+	const relativeQueue = ((): string => {
+		try {
+			// Let Git map the working-directory path onto the repository; this avoids
+			// case, separator, and Windows short-name mismatches in path arithmetic.
+			const prefix = runGit(['rev-parse', '--show-prefix'], path.dirname(absoluteQueue));
+			return `${prefix}${path.basename(absoluteQueue)}`.replaceAll('\\', '/');
+		} catch (error) {
+			throw new QueueError('Queue must be inside the Git repository', {cause: error});
+		}
+	})();
 	if (paths.includes(relativeQueue)) {
 		throw new QueueError(QUEUE_ERROR);
 	}
@@ -60,5 +65,5 @@ export const validateAgentCommit = (options: CommitValidationOptions): void => {
 	if (configuration.repository.requireChangedFiles && paths.length === 0) {
 		throw new QueueError(NO_CHANGES_ERROR);
 	}
-	queueIsUntouched(paths, options.queuePath, cwd);
+	queueIsUntouched(paths, options.queuePath);
 };
