@@ -1,8 +1,16 @@
-import {writeFileSync} from 'node:fs';
+import {readFileSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
+import {z} from 'zod';
 
 import {createTemporaryDirectory, initializeRepository, removeTemporaryDirectory, runCli} from './helpers/workspace.ts';
+
+const PackageManifestSchema = z.object({version: z.string().min(1)});
+
+const packageVersion = (): string => {
+	const manifestPath = path.resolve(import.meta.dirname, '../package.json');
+	return PackageManifestSchema.parse(JSON.parse(readFileSync(manifestPath, 'utf8'))).version;
+};
 
 describe('cli', () => {
 	const temporaryDirectories: string[] = [];
@@ -32,7 +40,7 @@ describe('cli', () => {
 			const directory = repository();
 			const result = runCli({cwd: directory, args: ['--version']});
 			expect(result.status).toBe(0);
-			expect(result.stdout).toContain('agent-task-queue 0.1.0-beta.1');
+			expect(result.stdout).toBe(`agent-task-queue ${packageVersion()}\n`);
 		});
 
 		it('rejects unknown options', () => {
