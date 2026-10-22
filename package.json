@@ -1,0 +1,69 @@
+{
+	"name": "agent-task-queue",
+	"version": "0.1.0-beta.1",
+	"description": "Run queued agent tasks sequentially in an isolated OpenCode session.",
+	"keywords": [
+		"agent",
+		"opencode",
+		"queue",
+		"task-runner"
+	],
+	"homepage": "https://github.com/doberkofler/agent-task-queue",
+	"bugs": {
+		"url": "https://github.com/doberkofler/agent-task-queue/issues"
+	},
+	"license": "MIT",
+	"author": "Dieter Oberkofler",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/doberkofler/agent-task-queue.git"
+	},
+	"bin": {
+		"agent-task-queue": "dist/cli.js"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"type": "module",
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"prepare": "husky",
+		"prepublishOnly": "pnpm run verify:release",
+		"typecheck": "tsc --noEmit -p tsconfig.json && tsc -p tsconfig.test.json",
+		"lint": "oxlint",
+		"knip": "knip",
+		"format": "oxfmt --write",
+		"format:check": "oxfmt --check",
+		"test": "vitest run",
+		"test:coverage": "vitest run --coverage",
+		"verify": "pnpm run typecheck && pnpm run lint && pnpm run knip && pnpm run format:check && pnpm run test",
+		"verify:release": "pnpm run verify && pnpm run build",
+		"release": "release-it",
+		"commitlint": "commitlint"
+	},
+	"dependencies": {
+		"cross-spawn": "7.0.6",
+		"zod": "4.6.7"
+	},
+	"devDependencies": {
+		"@commitlint/cli": "21.2.4",
+		"@commitlint/config-conventional": "21.2.4",
+		"@types/cross-spawn": "6.0.6",
+		"@types/node": "26.6.5",
+		"@vitest/coverage-v8": "5.0.5",
+		"eslint-plugin-regexp": "3.3.1",
+		"husky": "9.1.7",
+		"knip": "6.42.1",
+		"oxfmt": "0.74.0",
+		"oxlint": "1.89.0",
+		"oxlint-tsgolint": "7.0.2004",
+		"release-it": "21.1.1",
+		"typescript": "6.0.3",
+		"vitest": "5.0.5"
+	},
+	"engines": {
+		"node": ">=26"
+	}
+}
