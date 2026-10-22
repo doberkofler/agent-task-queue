@@ -17,6 +17,7 @@ export type RunStreamProcessOptions = {
 	readonly shell?: boolean;
 	readonly onStdoutLine?: (line: string) => void;
 	readonly onStderrLine?: (line: string) => void;
+	readonly stdinText?: string;
 };
 
 /** Outcome of one streamed child process. */
@@ -90,9 +91,12 @@ export const runStreamProcess = async (options: RunStreamProcessOptions): Promis
 	const child = spawnProcess(executable, args, {
 		...(options.cwd === undefined ? {} : {cwd: options.cwd}),
 		shell: options.shell ?? false,
-		stdio: ['ignore', 'pipe', 'pipe'],
+		stdio: [options.stdinText === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
 		detached: process.platform !== 'win32',
 	});
+	if (options.stdinText !== undefined) {
+		child.stdin?.end(options.stdinText);
+	}
 	let spawnError: Error | undefined;
 	const exited = new Promise<number>((resolve) => {
 		child.once('error', (error) => {

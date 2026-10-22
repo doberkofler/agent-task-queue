@@ -11,12 +11,17 @@ export type OpenCodeCommandOptions = {
 	readonly commitPolicy: CommitPolicy;
 };
 
+/** One OpenCode invocation: flags on the command line and the prompt on stdin. */
+export type OpenCodeInvocation = {
+	readonly command: readonly string[];
+	readonly prompt: string;
+};
+
 /** Builds the OpenCode invocation for one queue item. */
-export const openCodeCommand = (options: OpenCodeCommandOptions): readonly string[] => {
+export const openCodeInvocation = (options: OpenCodeCommandOptions): OpenCodeInvocation => {
 	const command = [environment.OPENCODE_BIN ?? 'opencode', 'run', '--standalone', '--auto', '--agent', options.agentName, '--format', 'json'];
 	if (options.model !== null) {
 		command.push('--model', options.model);
 	}
-	command.push(promptFor(options.item, options.queuePath, options.commitPolicy));
-	return command;
+	return {command, prompt: promptFor(options.item, options.queuePath, options.commitPolicy)};
 };

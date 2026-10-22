@@ -1,4 +1,4 @@
-import {openCodeCommand} from '../agent/openCode.ts';
+import {openCodeInvocation} from '../agent/openCode.ts';
 import {type Configuration} from '../config.ts';
 import {QueueError, TerminationRequestedError} from '../errors.ts';
 import {closeQuietly, allocateLogPaths, displayPath, openPrivate, writeTo} from '../logFiles.ts';
@@ -38,14 +38,16 @@ export const runAgent = async (options: AgentRunOptions): Promise<RunLogs> => {
 		const history = openPrivate(logs.history);
 		historyDescriptor = history;
 		reporter.start(options.item, logs);
+		const invocation = openCodeInvocation({
+			item: options.item,
+			queuePath: options.queuePath,
+			model: options.configuration.agent.model,
+			agentName: options.configuration.agent.name,
+			commitPolicy: options.configuration.repository.commitPolicy,
+		});
 		const result = await runStreamProcess({
-			command: openCodeCommand({
-				item: options.item,
-				queuePath: options.queuePath,
-				model: options.configuration.agent.model,
-				agentName: options.configuration.agent.name,
-				commitPolicy: options.configuration.repository.commitPolicy,
-			}),
+			command: invocation.command,
+			stdinText: invocation.prompt,
 			timeoutSeconds: options.configuration.agent.timeoutSeconds,
 			...(options.signal === undefined ? {} : {signal: options.signal}),
 			onStdoutLine: (line) => {

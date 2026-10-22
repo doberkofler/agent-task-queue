@@ -96,9 +96,10 @@ describe('runner', () => {
 		const argv = JSON.parse(readFileSync(path.join(value.directory, 'argv.json'), 'utf8')) as string[];
 		expect(argv.slice(0, 7)).toStrictEqual(['run', '--standalone', '--auto', '--agent', 'build', '--format', 'json']);
 		expect(argv).not.toContain('--model');
-		expect(argv.at(-1)).toContain('Implement exactly this item');
-		expect(argv.at(-1)).toContain(`Do not modify the queue file: ${value.queuePath}`);
-		expect(argv.at(-1)).toContain('Do not start background jobs');
+		const prompt = readFileSync(path.join(value.directory, 'prompt.txt'), 'utf8');
+		expect(prompt).toContain('Implement exactly this item');
+		expect(prompt).toContain(`Do not modify the queue file: ${value.queuePath}`);
+		expect(prompt).toContain('Do not start background jobs');
 		const queue = JSON.parse(readFileSync(value.queuePath, 'utf8')) as {items: {done: boolean}[]};
 		expect(queue.items[0]?.done).toBe(true);
 		expect(git(value.directory, 'rev-list', '--count', 'HEAD').stdout.trim()).toBe('3');

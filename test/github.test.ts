@@ -32,7 +32,7 @@ describe('github', () => {
 			const result = runQueue(value, agent, {env: {GH_BIN: github}});
 
 			expect(result.status).toBe(0);
-			const prompt = (JSON.parse(readFileSync(path.join(value.directory, 'argv.json'), 'utf8')) as string[]).at(-1) ?? '';
+			const prompt = readFileSync(path.join(value.directory, 'prompt.txt'), 'utf8');
 			expect(prompt).toContain(`GitHub issue: ${ISSUE_URL}`);
 			expect(prompt).toContain('Preserve raw events');
 			expect(prompt).toContain('Do not close the GitHub issue');

@@ -6,9 +6,14 @@ import {commitAll, createTemporaryDirectory, initializeRepository, runCli, type 
 export const RECORDING_AGENT = `import {spawnSync} from 'node:child_process';
 import {writeFileSync} from 'node:fs';
 
+let prompt = '';
+for await (const chunk of process.stdin) {
+  prompt += chunk;
+}
+writeFileSync('prompt.txt', prompt);
 writeFileSync('argv.json', JSON.stringify(process.argv.slice(2)));
 writeFileSync('implementation.txt', 'implemented');
-spawnSync('git', ['add', 'argv.json', 'implementation.txt'], {stdio: 'ignore'});
+spawnSync('git', ['add', 'argv.json', 'implementation.txt', 'prompt.txt'], {stdio: 'ignore'});
 spawnSync('git', ['commit', '--quiet', '-m', 'feat: implement item'], {stdio: 'ignore'});
 `;
 
