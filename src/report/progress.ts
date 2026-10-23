@@ -6,6 +6,7 @@ const CLOCK_INTERVAL_MS = 100;
 const SUMMARY_LINES = 2;
 const TAIL_LINE_LENGTH = 400;
 const ACTIVITY_INDENT = '   ';
+const DETAIL_INDENT = '     ';
 const LOG_INDENT = '   ';
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'] as const;
 
@@ -88,9 +89,9 @@ const outcomeText = (label: string, outcome: PhaseOutcome): string => {
 /**
  * Renders run progress for one terminal stream.
  *
- * On a TTY, only one transient activity line is redrawn; completed work is
- * appended as compact permanent lines. On a pipe, activities are dropped and
- * only phase and task milestones are written.
+ * On a TTY, a stable summary row and a semantic activity row are rendered
+ * independently; completed work is appended as compact permanent lines. On a
+ * pipe, activities are dropped and only phase and task milestones are written.
  */
 export class TerminalProgress {
 	public readonly stream: TextWriter;
@@ -174,7 +175,8 @@ export class TerminalProgress {
 		if (event.type === 'activity') {
 			this.detail = sanitize(event.detail);
 			this.counters = event.counters ?? '';
-			this.renderActivity();
+			this.renderSummary();
+			this.renderDetail();
 			return;
 		}
 		if (event.type === 'phase-finished') {
@@ -358,32 +360,68 @@ export class TerminalProgress {
 		if (!this.interactive || this.closed || this.phaseLabel.length === 0) {
 			return;
 		}
+		if (!this.activityDrawn) {
+			this.stream.write(`\r\u001b[2K${this.summaryRow()}\n${this.detailRow()}`);
+			this.activityDrawn = true;
+			this.frame += 1;
+			this.startClock();
+			return;
+		}
+		this.renderSummary();
+		this.renderDetail();
+	}
+
+	private summaryRow(): string {
 		const {palette} = this;
-		const width = terminalWidth();
 		const elapsed = formatDuration((Date.now() - this.phaseStarted) / 1000);
 		const frame = SPINNER_FRAMES[this.frame % SPINNER_FRAMES.length] ?? '';
-		const issue = this.task === null ? '' : `#${String(this.task.issue)}`;
-		const plainHead = `${ACTIVITY_INDENT}${frame}${issue.length === 0 ? '' : ` ${issue}`} ${this.phaseLabel}`;
-		const plainTail = [this.counters, elapsed].filter((part) => part.length > 0).join(' · ');
-		const detailBudget = Math.max(0, width - plainHead.length - (plainTail.length > 0 ? plainTail.length + 3 : 0) - 3);
-		const detail = clip(this.detail, detailBudget);
-		const tail = [this.counters.length === 0 ? '' : palette.dim(this.counters), palette.dim(elapsed)].filter((part) => part.length > 0);
+		const identity = this.task === null ? palette.bold(this.phaseLabel) : palette.bold(`#${String(this.task.issue)}`);
 		const segments = [
-			`${ACTIVITY_INDENT}${palette.cyan(frame)}${issue.length === 0 ? '' : ` ${palette.dim(issue)}`} ${palette.bold(this.phaseLabel)}`,
-			detail,
-			...tail,
+			`${ACTIVITY_INDENT}${palette.cyan(frame)} ${identity}`,
+			this.counters.length === 0 ? '' : palette.dim(this.counters),
+			palette.dim(elapsed),
 		].filter((part) => part.length > 0);
-		this.stream.write(`\r\u001b[2K${segments.join(` ${palette.dim('·')} `)}`);
-		this.activityDrawn = true;
+		return segments.join(` ${palette.dim('·')} `);
+	}
+
+	private detailRow(): string {
+		const {palette} = this;
+		const phase = this.task === null ? '' : this.phaseLabel;
+		const plainPrefix = `${DETAIL_INDENT}${phase}`;
+		const separatorLength = phase.length > 0 && this.detail.length > 0 ? 3 : 0;
+		const detail = clip(this.detail, Math.max(0, terminalWidth() - plainPrefix.length - separatorLength));
+		const segments = [phase.length === 0 ? '' : palette.dim(phase), detail].filter((part) => part.length > 0);
+		return `${DETAIL_INDENT}${segments.join(` ${palette.dim('·')} `)}`;
+	}
+
+	private renderSummary(): void {
+		if (!this.interactive || this.closed || this.phaseLabel.length === 0) {
+			return;
+		}
+		if (!this.activityDrawn) {
+			this.renderActivity();
+			return;
+		}
+		this.stream.write(`\u001b[1A\r\u001b[2K${this.summaryRow()}\u001b[1B\r`);
 		this.frame += 1;
-		this.startClock();
+	}
+
+	private renderDetail(): void {
+		if (!this.interactive || this.closed || this.phaseLabel.length === 0) {
+			return;
+		}
+		if (!this.activityDrawn) {
+			this.renderActivity();
+			return;
+		}
+		this.stream.write(`\r\u001b[2K${this.detailRow()}`);
 	}
 
 	private clearActivity(): void {
 		if (!this.interactive || !this.activityDrawn) {
 			return;
 		}
-		this.stream.write('\r\u001b[2K');
+		this.stream.write('\r\u001b[2K\u001b[1A\r\u001b[2K');
 		this.activityDrawn = false;
 	}
 
@@ -400,7 +438,7 @@ export class TerminalProgress {
 			return;
 		}
 		this.clock = setInterval(() => {
-			this.renderActivity();
+			this.renderSummary();
 		}, CLOCK_INTERVAL_MS);
 		this.clock.unref();
 	}

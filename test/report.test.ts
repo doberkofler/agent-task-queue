@@ -1,7 +1,7 @@
 import {type ChildProcess} from 'node:child_process';
 import {homedir} from 'node:os';
 import path from 'node:path';
-import {describe, expect, it} from 'vitest';
+import {describe, expect, it, vi} from 'vitest';
 
 import {sleepInhibitorCommand, stopSleepInhibitor} from '../src/platform/sleepInhibitor.ts';
 import {describeTool, workspacePath} from '../src/report/activity.ts';
@@ -93,7 +93,7 @@ describe('TerminalProgress', () => {
 		expect(output).not.toContain('Must not appear.');
 	});
 
-	it('redraws one transient activity line on a TTY', () => {
+	it('renders separate summary and activity rows on a TTY', () => {
 		const {progress, text} = progressFor(true);
 		reportAll(progress, [
 			{type: 'run-started', queue: 'queue.json', model: null, verification: null},
@@ -105,8 +105,32 @@ describe('TerminalProgress', () => {
 		expect(output).toContain('Reading src/report/progress.ts');
 		expect(output).toContain('3 tools');
 		expect(output).toContain('#14');
+		expect(output).toContain('\r\u001b[2K     Agent · Reading src/report/progress.ts');
 		expect(output).toContain('\r\u001b[2K');
 		progress.close();
+	});
+
+	it('does not repaint activity on clock ticks', () => {
+		vi.useFakeTimers();
+		try {
+			const {progress, text} = progressFor(true);
+			reportAll(progress, [
+				{type: 'task-started', item},
+				{type: 'phase-started', label: 'Agent'},
+				{type: 'activity', detail: 'Running command', counters: '4 tools'},
+			]);
+			const offset = text().length;
+
+			vi.advanceTimersByTime(100);
+
+			const tick = text().slice(offset);
+			expect(tick).toContain('\u001b[1A');
+			expect(tick).toContain('4 tools');
+			expect(tick).not.toContain('Running command');
+			progress.close();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('hides activities and keeps milestones when output is piped', () => {
@@ -181,14 +205,15 @@ describe('AgentReporter', () => {
 		expect(reporter.finish().tools).toBe(1);
 	});
 
-	it('accumulates tokens, cost, and the final text', () => {
-		const {reporter} = reporterFor(false);
+	it('accumulates tokens and cost without showing agent text as live activity', () => {
+		const {reporter, text} = reporterFor(false);
 		reporter.consume(JSON.stringify({type: 'step_finish', part: {cost: 0.0012, tokens: {input: 100, output: 20, reasoning: 0}}}));
 		reporter.consume(JSON.stringify({type: 'text', part: {text: 'Implemented\nthe runner.'}}));
 		const stats = reporter.finish();
 		expect(stats.tokens).toBe(120);
 		expect(stats.cost).toBeCloseTo(0.0012);
 		expect(stats.finalText).toContain('Implemented');
+		expect(text()).not.toContain('the runner.');
 	});
 
 	it('reports errors and detects background jobs', () => {
@@ -209,11 +234,13 @@ describe('AgentReporter', () => {
 		expect(verbose.text()).toContain('unstructured diagnostic');
 	});
 
-	it('strips terminal control sequences', () => {
+	it('strips terminal control sequences from the final response', () => {
 		const {reporter, text} = reporterFor(false);
 		reporter.consume(JSON.stringify({type: 'text', part: {text: '\u001b[31mred\u001b[0m'}}));
+		const stats = reporter.finish();
 		expect(text()).not.toContain('\u001b[31m');
-		expect(text()).toContain('red');
+		expect(text()).not.toContain('red');
+		expect(stats.finalText).toBe('red');
 	});
 });
 

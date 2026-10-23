@@ -57,7 +57,14 @@ Progress uses a compact, Vitest-style layout:
  ✓ 1 task completed · 2m38s
 ```
 
-- One transient activity line is redrawn on a terminal; completed work stays in scrollback.
+While a task is running, stable progress and volatile activity occupy separate rows:
+
+```text
+   ⠸ #57 · 107 tools · 5m22s
+     Agent · Running command
+```
+
+- Two transient rows are updated independently on a terminal; completed work stays in scrollback.
 - Tool arguments and shell commands become semantic activity such as `Reading src/config.ts` or `Running command`. Commands are not echoed.
 - Only two meaningful lines of the agent's final response are shown.
 - Failures print the retained output tail and the exact history log path.

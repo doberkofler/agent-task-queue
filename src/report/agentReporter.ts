@@ -112,8 +112,6 @@ export class AgentReporter {
 			const text = readField(part, 'text');
 			if (typeof text === 'string') {
 				this.finalText = sanitize(text).trim();
-				const lastLine = this.finalText.split('\n').findLast((candidate) => candidate.trim().length > 0) ?? this.finalText;
-				this.activity(lastLine.trim());
 			}
 			return;
 		}

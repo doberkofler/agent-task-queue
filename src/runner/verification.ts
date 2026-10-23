@@ -31,6 +31,7 @@ export const runVerification = async (options: VerificationOptions): Promise<voi
 		closeQuietly(openPrivate(options.logs.history));
 	}
 	options.progress.report({type: 'phase-started', label: options.phase});
+	options.progress.report({type: 'activity', detail: 'Running command'});
 	const tail = new LineTail(FAILURE_TAIL_LINES);
 	const started = Date.now();
 	const descriptor = openAppend(options.logs.history);
@@ -49,12 +50,10 @@ export const runVerification = async (options: VerificationOptions): Promise<voi
 			onStdoutLine: (line) => {
 				writeTo(descriptor, `[verify:stdout] ${line}\n`);
 				tail.add(`stdout: ${sanitize(line)}`);
-				options.progress.report({type: 'activity', detail: sanitize(line)});
 			},
 			onStderrLine: (line) => {
 				writeTo(descriptor, `[verify:stderr] ${line}\n`);
 				tail.add(`stderr: ${sanitize(line)}`);
-				options.progress.report({type: 'activity', detail: sanitize(line)});
 			},
 		});
 		if (result.aborted) {
