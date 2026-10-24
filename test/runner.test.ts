@@ -185,7 +185,8 @@ describe('runner', () => {
 		const historyPath = path.join(value.logDirectory, historyLogs[0] ?? '');
 		expect(readFileSync(historyPath, 'utf8')).toContain('agent diagnostic');
 		expect(result.stdout).not.toContain(historyPath);
-		expect(result.stdout).not.toContain(path.join(value.logDirectory, agentLogs[0] ?? ''));
+		expect(result.stdout).toContain(path.join(value.logDirectory, agentLogs[0] ?? ''));
+		expect(result.stdout).toContain('follow with tail -f');
 	});
 
 	it('reports an agent failure with the log path', () => {

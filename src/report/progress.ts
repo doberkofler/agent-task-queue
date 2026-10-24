@@ -40,6 +40,7 @@ export type ProgressEvent =
 	| {readonly type: 'phase-finished'; readonly label: string; readonly outcome: PhaseOutcome}
 	| {readonly type: 'phase-skipped'; readonly label: string; readonly reason: string}
 	| {readonly type: 'task-started'; readonly item: QueueItem}
+	| {readonly type: 'raw-output'; readonly path: string}
 	| {readonly type: 'task-finished'; readonly item: QueueItem; readonly stats: TaskStats; readonly summary: readonly string[]}
 	| {readonly type: 'task-aborted'}
 	| {
@@ -132,6 +133,10 @@ export class TerminalProgress {
 		}
 		if (event.type === 'task-started') {
 			this.startTask(event.item);
+			return true;
+		}
+		if (event.type === 'raw-output') {
+			this.writeRawOutput(event.path);
 			return true;
 		}
 		if (event.type === 'task-finished') {
@@ -234,6 +239,11 @@ export class TerminalProgress {
 		this.counters = '';
 		this.phaseStarted = Date.now();
 		this.renderActivity();
+	}
+
+	private writeRawOutput(path: string): void {
+		const displayPath = sanitize(path).trim().replaceAll(/\s+/gu, ' ');
+		this.line(`${LOG_INDENT}${this.palette.dim('raw output')}  ${displayPath} ${this.palette.dim('· follow with tail -f')}`);
 	}
 
 	private finishTask(item: QueueItem, stats: TaskStats, summary: readonly string[]): void {

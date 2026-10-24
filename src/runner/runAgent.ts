@@ -35,6 +35,7 @@ export const runAgent = async (options: AgentRunOptions): Promise<AgentStats> =>
 		const history = openPrivate(logs.history);
 		historyDescriptor = history;
 		reporter.start();
+		options.progress.report({type: 'raw-output', path: displayPath(logs.agent)});
 		if (options.verbose) {
 			options.progress.report({type: 'verbose', text: `log ${displayPath(logs.history)}`});
 		}

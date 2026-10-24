@@ -200,8 +200,7 @@ describe('AgentReporter', () => {
 		reporter.consume(JSON.stringify({type: 'tool_use', part: {id: 'b', tool: 'shell', state: {status: 'running', input: {command: 'pnpm secret-command'}}}}));
 		const output = text();
 		expect(output).toContain('Reading src/report/progress.ts');
-		expect(output).toContain('Running command');
-		expect(output).not.toContain('pnpm secret-command');
+		expect(output).toContain('Running pnpm secret-command');
 		expect(reporter.finish().tools).toBe(1);
 	});
 
@@ -245,9 +244,10 @@ describe('AgentReporter', () => {
 });
 
 describe('activity', () => {
-	it('describes tools without exposing commands or absolute paths', () => {
+	it('describes tools with sanitized commands and workspace-relative paths', () => {
 		expect(describeTool(toolPart('read', {path: `${process.cwd()}/src/index.ts`}))).toBe('Reading src/index.ts');
-		expect(describeTool(toolPart('shell', {command: 'rm -rf /'}))).toBe('Running command');
+		expect(describeTool(toolPart('shell', {command: 'pnpm\nrun\u001b[31m test'}))).toBe('Running pnpm run test');
+		expect(describeTool(toolPart('shell', {}))).toBe('Running command');
 		expect(describeTool(toolPart('grep', {pattern: 'needle'}))).toBe('Searching for needle');
 		expect(describeTool(toolPart('websearch', {query: 'zod v4'}))).toContain('zod v4');
 	});

@@ -78,6 +78,11 @@ const skillDescriptor: Descriptor = (input) => {
 	return name.length === 0 ? 'Loading a skill' : `Loading skill ${name}`;
 };
 
+const commandDescriptor: Descriptor = (input) => {
+	const command = readString(input, 'command');
+	return command.trim().length === 0 ? 'Running command' : `Running ${shorten(command, MAX_DETAIL_LENGTH)}`;
+};
+
 const DESCRIPTORS: Readonly<Record<string, Descriptor>> = {
 	read: fileDescriptor('Reading', 'files'),
 	write: fileDescriptor('Writing', 'files'),
@@ -90,9 +95,9 @@ const DESCRIPTORS: Readonly<Record<string, Descriptor>> = {
 	task: delegateDescriptor,
 	subagent: delegateDescriptor,
 	skill: skillDescriptor,
-	bash: () => 'Running command',
-	shell: () => 'Running command',
-	execute: () => 'Running command',
+	bash: commandDescriptor,
+	shell: commandDescriptor,
+	execute: commandDescriptor,
 };
 
 /** Describes a tool call as one short, safe activity phrase. */

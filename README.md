@@ -77,14 +77,16 @@ While a task is running, stable progress and volatile activity occupy separate r
 
 ```text
    ⠸ #57 · 107 tools · 5m22s
-     Agent · Running command
+   raw output  ~/.local/state/agent-task-queue/2026-10-24T120000-57.jsonl · follow with tail -f
+     Agent · Running pnpm run test
 ```
 
 - Two transient rows are updated independently on a terminal; completed work stays in scrollback.
-- Tool arguments and shell commands become semantic activity such as `Reading src/config.ts` or `Running command`. Commands are not echoed.
+- Tool activity is summarized as `Reading src/config.ts`; active shell commands are sanitized, shortened, and shown. Commands may contain sensitive arguments.
+- Every task prints its raw agent-output path. Run `tail -f <path>` in another terminal to follow it live.
 - Only two meaningful lines of the agent's final response are shown.
 - Failures print the retained output tail and the exact history log path.
-- Piped output contains phase milestones only, without animation or activity lines.
+- Piped output contains phase milestones and raw-output paths, without animation or activity lines.
 - `--verbose` adds tool details, event diagnostics, and log paths to successful runs.
 
 Color is enabled only on a terminal and can be controlled with `NO_COLOR` and `FORCE_COLOR`.
@@ -209,6 +211,8 @@ Every agent and verification run writes two private files under `$QUEUE_LOG_DIR`
 
 - `<timestamp>-<issue>.jsonl`: raw agent stdout
 - `<timestamp>-<issue>.log`: complete history, including stderr
+
+The raw output path is printed when each agent starts. Follow it live with `tail -f <path>`. Use the `.log` file when stderr or the complete process history is needed.
 
 | Variable | Meaning |
 | --- | --- |
