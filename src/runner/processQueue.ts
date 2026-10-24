@@ -12,6 +12,7 @@ import {describeCommand, runVerification, verificationLogs} from './verification
 export type ProcessQueueOptions = {
 	readonly queuePath: string | null;
 	readonly queueContent: string | null;
+	readonly queueLabel: string;
 	readonly configuration: Configuration;
 	readonly verbose: boolean;
 	readonly signal?: AbortSignal;
@@ -129,7 +130,7 @@ export const processQueue = async (options: ProcessQueueOptions): Promise<void> 
 	try {
 		progress.report({
 			type: 'run-started',
-			queue: options.queuePath ?? 'stdin',
+			queue: options.queueLabel,
 			model: configuration.agent.model,
 			verification: command === null ? null : describeCommand(command),
 		});

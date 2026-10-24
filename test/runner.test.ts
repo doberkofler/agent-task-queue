@@ -57,7 +57,7 @@ type SignalResult = {
 const runWithSignal = async (signal: NodeJS.Signals): Promise<SignalResult> => {
 	const value = fixture();
 	const agent = writeAgent(value.directory, 'agent', SIGNAL_AGENT);
-	const child = spawn(process.execPath, [cliExecutable, '--no-verify', value.queuePath], {
+	const child = spawn(process.execPath, [cliExecutable, '--no-verify', '--queue-file', value.queuePath], {
 		cwd: value.directory,
 		env: cliEnvironment({OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory}),
 		stdio: ['ignore', 'pipe', 'pipe'],

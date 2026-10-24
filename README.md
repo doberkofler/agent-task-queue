@@ -23,20 +23,36 @@ npx agent-task-queue --help
 
 ```bash
 # Markdown checklist
-npx agent-task-queue TODO.md --verify "pnpm verify"
+npx agent-task-queue --queue-file TODO.md --verify "pnpm verify"
 
 # Legacy JSON queue
-npx agent-task-queue queue.json --verify "pnpm verify" --model openai/gpt-5
+npx agent-task-queue --queue-file queue.json --verify "pnpm verify" --model openai/gpt-5
 
 # GitHub issue queue from a file
-npx agent-task-queue queue.json --verify "pnpm verify"
+npx agent-task-queue --queue-file queue.json --verify "pnpm verify"
 
 # GitHub issue queue from stdin
 echo '{"version":1,"kind":"github-issues","items":[{"url":"https://github.com/OWNER/REPOSITORY/issues/16"}]}' \
-  | npx agent-task-queue - --verify "pnpm verify"
+  | npx agent-task-queue --queue-stdin --verify "pnpm verify"
+
+# GitHub issues from the current repository
+npx agent-task-queue --github-issues 11,12,14 --verify "pnpm verify"
+
+# GitHub issues identified by canonical URLs; repositories may be mixed
+npx agent-task-queue \
+  --github-issues https://github.com/OWNER/REPOSITORY/issues/11,https://github.com/OTHER/PROJECT/issues/14 \
+  --verify "pnpm verify"
+
+# All open issues in a milestone from the current repository
+npx agent-task-queue --github-milestone 123 --verify "pnpm verify"
+
+# Milestone identified by its canonical URL
+npx agent-task-queue \
+  --github-milestone https://github.com/OWNER/REPOSITORY/milestone/123 \
+  --verify "pnpm verify"
 ```
 
-Every invocation needs an explicit verification policy: `--verify <command>`, `--no-verify`, or a `verification.command` in the configuration file.
+Every invocation needs exactly one queue source: `--queue-file`, `--queue-stdin`, `--github-issues`, or `--github-milestone`. Positional queue paths and an implicit default queue are not supported. Every invocation also needs an explicit verification policy: `--verify <command>`, `--no-verify`, or a `verification.command` in the configuration file.
 
 ## Output
 
@@ -115,6 +131,10 @@ Color is enabled only on a terminal and can be controlled with `NO_COLOR` and `F
 - Closed issues and issues with an existing local closure commit are skipped.
 - Completion creates an empty commit with the footer `Closes OWNER/REPOSITORY#N`.
 - The issue queue requires `completion.commit` and `completion.closeGitHubIssue` to remain enabled.
+- Numeric issue and milestone references use the current repository reported by `gh repo view`.
+- `--github-issues` accepts a comma-separated mixture of numbers and canonical URLs, including URLs from different repositories.
+- `--github-milestone` loads every open issue, excludes pull requests, and processes issues in ascending number order.
+- `--queue-stdin` accepts only a GitHub queue JSON document because file-backed formats must persist completion to their source file.
 
 ## Configuration
 

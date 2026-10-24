@@ -3,7 +3,7 @@ import path from 'node:path';
 import {afterEach, describe, expect, it} from 'vitest';
 
 import {NO_COMMIT_AGENT, RECORDING_AGENT, createFixture, runQueue, writeAgent, writeGithubCli, type Fixture} from './helpers/fixtures.ts';
-import {commitAll, git, removeTemporaryDirectory, runCli} from './helpers/workspace.ts';
+import {commitAll, git, removeTemporaryDirectory, runCli, writeExecutable} from './helpers/workspace.ts';
 
 const ISSUE_URL = 'https://github.com/doberkofler/agent-task-queue/issues/16';
 
@@ -24,6 +24,71 @@ describe('github', () => {
 	});
 
 	describe('GitHub issue queues', () => {
+		it('resolves a numeric issue against the current repository', () => {
+			const value = createFixture();
+			temporaryDirectories.push(value.directory, value.logDirectory);
+			const github = writeExecutable(
+				value.directory,
+				'fake-gh',
+				`const args = process.argv.slice(2);
+if (args[0] === 'repo') {
+  console.log(JSON.stringify({url: 'https://github.com/doberkofler/agent-task-queue'}));
+} else {
+  console.log(JSON.stringify({number: 16, state: 'CLOSED', title: 'Done', body: '', url: '${ISSUE_URL}'}));
+}
+`,
+			);
+			const agent = writeAgent(value.directory, 'agent', 'process.exit(99);\n');
+
+			const result = runCli({
+				cwd: value.directory,
+				args: ['--github-issues', '16', '--no-verify'],
+				env: {GH_BIN: github, OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
+			});
+
+			expect(result.status).toBe(0);
+			expect(result.stdout).toContain('no pending tasks');
+		});
+
+		it('loads milestone issues in number order and excludes pull requests', () => {
+			const value = createFixture();
+			temporaryDirectories.push(value.directory, value.logDirectory);
+			const callsPath = path.join(value.logDirectory, 'gh-calls.jsonl');
+			const issue17 = 'https://github.com/doberkofler/agent-task-queue/issues/17';
+			const pullRequest = 'https://github.com/doberkofler/agent-task-queue/issues/15';
+			const github = writeExecutable(
+				value.directory,
+				'fake-gh',
+				`import {appendFileSync} from 'node:fs';
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(callsPath)}, JSON.stringify(args) + '\\n');
+if (args[0] === 'api') {
+  console.log(JSON.stringify([[
+    {number: 17, html_url: '${issue17}'},
+    {number: 15, html_url: '${pullRequest}', pull_request: {}},
+    {number: 16, html_url: '${ISSUE_URL}'}
+  ]]));
+} else {
+  const url = args[2];
+  const number = Number(url.split('/').at(-1));
+  console.log(JSON.stringify({number, state: 'CLOSED', title: 'Done', body: '', url}));
+}
+`,
+			);
+			const agent = writeAgent(value.directory, 'agent', 'process.exit(99);\n');
+
+			const result = runCli({
+				cwd: value.directory,
+				args: ['--github-milestone', 'https://github.com/doberkofler/agent-task-queue/milestone/123', '--no-verify'],
+				env: {GH_BIN: github, OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
+			});
+
+			expect(result.status).toBe(0);
+			const calls = readFileSync(callsPath, 'utf8');
+			expect(calls.indexOf(ISSUE_URL)).toBeLessThan(calls.indexOf(issue17));
+			expect(calls).not.toContain(pullRequest);
+		});
+
 		it('processes an open issue and records the closure footer', () => {
 			const value = githubFixture();
 			const github = writeGithubCli(value.directory, 'OPEN', ISSUE_URL);
@@ -49,7 +114,7 @@ describe('github', () => {
 
 			const result = runCli({
 				cwd: value.directory,
-				args: ['--no-verify', '-'],
+				args: ['--no-verify', '--queue-stdin'],
 				env: {GH_BIN: github, OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
 				input: JSON.stringify({version: 1, kind: 'github-issues', items: [{url: ISSUE_URL}]}),
 			});
@@ -80,7 +145,7 @@ describe('github', () => {
 
 			const result = runCli({
 				cwd: value.directory,
-				args: ['--config', configPath, '--no-verify', value.queuePath],
+				args: ['--config', configPath, '--no-verify', '--queue-file', value.queuePath],
 				env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
 			});
 

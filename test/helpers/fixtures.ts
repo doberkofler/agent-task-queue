@@ -116,7 +116,7 @@ export const runQueue = (fixture: Fixture, agent: string, options: RunQueueOptio
 		options.skipDefaultVerification === true || args.some((argument) => argument === '--verify' || argument === '--no-verify') ? [] : ['--no-verify'];
 	return runCli({
 		cwd: fixture.directory,
-		args: [...args, ...verification, fixture.queuePath],
+		args: [...args, ...verification, '--queue-file', fixture.queuePath],
 		env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: fixture.logDirectory, ...options.env},
 	});
 };

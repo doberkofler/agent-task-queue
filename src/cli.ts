@@ -7,21 +7,20 @@ import {z} from 'zod';
 import {applyOverrides, loadConfiguration, type Configuration} from './config.ts';
 import {environment} from './environment.ts';
 import {TerminationRequestedError, UsageError} from './errors.ts';
+import {resolveGithubIssueUrls, resolveGithubMilestoneIssueUrls} from './githubIssues.ts';
 import {startSleepInhibitor, stopSleepInhibitor} from './platform/sleepInhibitor.ts';
 import {parseJsonContent} from './queue/json.ts';
 import {processQueue} from './runner/processQueue.ts';
 
-const DEFAULT_QUEUE = 'TODO.md';
-
-const HELP = `Usage: agent-task-queue [options] [queue]
+const HELP = `Usage: agent-task-queue [options] <source>
 
 Runs queued agent tasks sequentially in isolated OpenCode sessions.
 
-Arguments:
-  queue                     Markdown or JSON queue file; "-" reads a GitHub JSON queue from stdin
-                            (default: ${DEFAULT_QUEUE})
-
 Options:
+  --queue-file <path>       read a Markdown or JSON queue file
+  --queue-stdin             read a GitHub JSON queue from standard input
+  --github-issues <list>    comma-separated issue numbers or canonical GitHub URLs
+  --github-milestone <ref>  milestone number in the current repository or canonical URL
   --model <name>            provider/model[#variant]; defaults to QUEUE_MODEL, then OpenCode
   --verbose                 show agent diagnostics and unrecognized events
   --verify <command>        trusted shell command run before agents and after each agent commit
@@ -35,7 +34,7 @@ Options:
 
 /** Result of terminal argument parsing. */
 type TerminalArguments = {
-	readonly queue: string;
+	readonly source: QueueSource | null;
 	readonly model?: string;
 	readonly verbose: boolean;
 	readonly verify?: string;
@@ -47,6 +46,12 @@ type TerminalArguments = {
 	readonly version: boolean;
 };
 
+type QueueSource =
+	| {readonly kind: 'file'; readonly path: string}
+	| {readonly kind: 'stdin'}
+	| {readonly kind: 'github-issues'; readonly value: string}
+	| {readonly kind: 'github-milestone'; readonly value: string};
+
 const positiveSeconds = (value: string, option: string): number => {
 	const seconds = Number(value);
 	if (!Number.isFinite(seconds) || seconds <= 0) {
@@ -55,19 +60,36 @@ const positiveSeconds = (value: string, option: string): number => {
 	return seconds;
 };
 
-const positionalQueue = (positionals: readonly string[]): string => {
-	if (positionals.length > 1) {
-		throw new UsageError('Expected at most one queue path');
+const queueSource = (values: Readonly<Record<string, boolean | string | undefined>>): QueueSource | null => {
+	const sources: QueueSource[] = [];
+	if (typeof values['queue-file'] === 'string') {
+		sources.push({kind: 'file', path: values['queue-file']});
 	}
-	return positionals[0] ?? DEFAULT_QUEUE;
+	if (values['queue-stdin'] === true) {
+		sources.push({kind: 'stdin'});
+	}
+	if (typeof values['github-issues'] === 'string') {
+		sources.push({kind: 'github-issues', value: values['github-issues']});
+	}
+	if (typeof values['github-milestone'] === 'string') {
+		sources.push({kind: 'github-milestone', value: values['github-milestone']});
+	}
+	if (sources.length > 1) {
+		throw new UsageError('Exactly one queue source is allowed');
+	}
+	return sources[0] ?? null;
 };
 
 const parseTerminalArguments = (terminal: readonly string[]): TerminalArguments => {
 	const parsed = parseArgs({
 		args: [...terminal],
-		allowPositionals: true,
+		allowPositionals: false,
 		strict: true,
 		options: {
+			'queue-file': {type: 'string'},
+			'queue-stdin': {type: 'boolean'},
+			'github-issues': {type: 'string'},
+			'github-milestone': {type: 'string'},
 			model: {type: 'string'},
 			verbose: {type: 'boolean'},
 			verify: {type: 'string'},
@@ -85,7 +107,7 @@ const parseTerminalArguments = (terminal: readonly string[]): TerminalArguments 
 	const verifyTimeout = parsed.values['verify-timeout'];
 	const configPath = parsed.values.config;
 	return {
-		queue: positionalQueue(parsed.positionals),
+		source: queueSource(parsed.values),
 		...(model === undefined ? {} : {model}),
 		verbose: parsed.values.verbose === true,
 		...(verify === undefined ? {} : {verify}),
@@ -96,6 +118,35 @@ const parseTerminalArguments = (terminal: readonly string[]): TerminalArguments 
 		help: parsed.values.help === true,
 		version: parsed.values.version === true,
 	};
+};
+
+const githubQueueContent = (urls: readonly string[]): string => JSON.stringify({version: 1, kind: 'github-issues', items: urls.map((url) => ({url}))});
+
+const queueInput = (source: QueueSource): {readonly queuePath: string | null; readonly queueContent: string | null; readonly queueLabel: string} => {
+	switch (source.kind) {
+		case 'file': {
+			if (source.path === '-') {
+				throw new UsageError('Use --queue-stdin instead of --queue-file -');
+			}
+			return {queuePath: source.path, queueContent: null, queueLabel: source.path};
+		}
+		case 'stdin': {
+			return {queuePath: null, queueContent: readFileSync(0, 'utf8'), queueLabel: 'stdin'};
+		}
+		case 'github-issues': {
+			return {queuePath: null, queueContent: githubQueueContent(resolveGithubIssueUrls(source.value)), queueLabel: 'GitHub issues'};
+		}
+		case 'github-milestone': {
+			return {
+				queuePath: null,
+				queueContent: githubQueueContent(resolveGithubMilestoneIssueUrls(source.value)),
+				queueLabel: `GitHub milestone ${source.value}`,
+			};
+		}
+		default: {
+			throw new UsageError('Unsupported queue source');
+		}
+	}
 };
 
 const VersionSchema = z.object({version: z.string().min(1)});
@@ -133,6 +184,9 @@ const verifyPolicy = (terminal: TerminalArguments, configuration: Configuration)
 };
 
 const run = async (terminal: TerminalArguments): Promise<number> => {
+	if (terminal.source === null) {
+		throw new UsageError('Exactly one queue source is required');
+	}
 	const configuration = resolveConfiguration(terminal);
 	verifyPolicy(terminal, configuration);
 	const controller = new AbortController();
@@ -153,9 +207,8 @@ const run = async (terminal: TerminalArguments): Promise<number> => {
 
 	try {
 		inhibitor = startSleepInhibitor();
-		const queuePath = terminal.queue === '-' ? null : terminal.queue;
-		const queueContent = queuePath === null ? readFileSync(0, 'utf8') : null;
-		await processQueue({queuePath, queueContent, configuration, verbose: terminal.verbose, signal: controller.signal});
+		const input = queueInput(terminal.source);
+		await processQueue({...input, configuration, verbose: terminal.verbose, signal: controller.signal});
 		return 0;
 	} catch (error) {
 		if (error instanceof TerminationRequestedError) {

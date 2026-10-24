@@ -34,6 +34,7 @@ describe('cli', () => {
 			const result = runCli({cwd: directory, args: ['--help']});
 			expect(result.status).toBe(0);
 			expect(result.stdout).toContain('Usage: agent-task-queue');
+			expect(result.stdout).toContain('--github-milestone');
 		});
 
 		it('prints the package version', () => {
@@ -50,6 +51,33 @@ describe('cli', () => {
 			expect(result.stderr).toContain('agent-task-queue');
 		});
 
+		it('requires an explicit queue source', () => {
+			const directory = repository();
+			const result = runCli({cwd: directory, args: ['--no-verify']});
+			expect(result.status).toBe(2);
+			expect(result.stderr).toContain('Exactly one queue source is required');
+		});
+
+		it('rejects positional queue paths', () => {
+			const directory = repository();
+			const result = runCli({cwd: directory, args: ['TODO.md', '--no-verify']});
+			expect(result.status).toBe(2);
+		});
+
+		it('rejects conflicting queue sources', () => {
+			const directory = repository();
+			const result = runCli({cwd: directory, args: ['--queue-file', 'TODO.md', '--github-issues', '1', '--no-verify']});
+			expect(result.status).toBe(2);
+			expect(result.stderr).toContain('Exactly one queue source is allowed');
+		});
+
+		it('rejects the stdin path sentinel', () => {
+			const directory = repository();
+			const result = runCli({cwd: directory, args: ['--queue-file', '-', '--no-verify']});
+			expect(result.status).toBe(2);
+			expect(result.stderr).toContain('--queue-stdin');
+		});
+
 		it('rejects non-positive timeouts', () => {
 			const directory = repository();
 			const result = runCli({cwd: directory, args: ['--timeout', '0', '--no-verify']});
@@ -59,7 +87,7 @@ describe('cli', () => {
 
 		it('reports a missing explicit configuration file', () => {
 			const directory = repository();
-			const result = runCli({cwd: directory, args: ['--config', 'missing.json', '--no-verify']});
+			const result = runCli({cwd: directory, args: ['--config', 'missing.json', '--no-verify', '--queue-file', 'TODO.md']});
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain('Configuration file not found');
 		});
@@ -68,7 +96,7 @@ describe('cli', () => {
 			const directory = repository();
 			const configPath = path.join(directory, 'agent-task-queue.config.json');
 			writeFileSync(configPath, '{"verification":{"command":[]}}', 'utf8');
-			const result = runCli({cwd: directory, args: ['--config', configPath]});
+			const result = runCli({cwd: directory, args: ['--config', configPath, '--queue-file', 'TODO.md']});
 			expect(result.status).toBe(1);
 			expect(result.stderr).toContain('Invalid configuration');
 		});

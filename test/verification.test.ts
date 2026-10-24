@@ -41,7 +41,7 @@ describe('verification', () => {
 	const runVerified = (value: VerificationFixture, agent: string): RunCliResult =>
 		runCli({
 			cwd: value.directory,
-			args: ['--config', value.configPath, value.queuePath],
+			args: ['--config', value.configPath, '--queue-file', value.queuePath],
 			env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
 		});
 
@@ -56,7 +56,11 @@ describe('verification', () => {
 			const value = verificationFixture();
 			const agent = writeAgent(value.directory, 'agent', RECORDING_AGENT);
 
-			const result = runCli({cwd: value.directory, args: [value.queuePath], env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory}});
+			const result = runCli({
+				cwd: value.directory,
+				args: ['--queue-file', value.queuePath],
+				env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
+			});
 
 			expect(result.status).toBe(2);
 			expect(result.stderr).toContain('--verify or --no-verify is required');
@@ -124,7 +128,12 @@ describe('verification', () => {
 
 			const result = runCli({
 				cwd: value.directory,
-				args: ['--verify', `${JSON.stringify(process.execPath)} ${JSON.stringify(value.scriptPath)} ${JSON.stringify(value.counterPath)}`, value.queuePath],
+				args: [
+					'--verify',
+					`${JSON.stringify(process.execPath)} ${JSON.stringify(value.scriptPath)} ${JSON.stringify(value.counterPath)}`,
+					'--queue-file',
+					value.queuePath,
+				],
 				env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
 			});
 
@@ -138,7 +147,7 @@ describe('verification', () => {
 
 			const result = runCli({
 				cwd: value.directory,
-				args: ['--verify', 'true', '--no-verify', value.queuePath],
+				args: ['--verify', 'true', '--no-verify', '--queue-file', value.queuePath],
 				env: {OPENCODE_BIN: agent, QUEUE_LOG_DIR: value.logDirectory},
 			});
 
